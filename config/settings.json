@@ -1,8 +1,0 @@
-{
-    "firmware_mode": "Стандартный (4–20 мА)",
-    "pressure_max": 10.0,
-    "open_threshold": 0.9,
-    "close_threshold": 0.1,
-    "hysteresis": 0.05,
-    "dark_theme": false
-}
