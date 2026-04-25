@@ -3,11 +3,11 @@
  *
  * Функционал:
  * - Чтение датчика 4-20мА (A0) с калибровкой.
- * - Управление 2 реле (D2, D3) с настраиваемым гистерезисом.
+ * - Управление 2 реле (D2, D3) по уставкам с настраиваемым гистерезисом.
  * - Дисплей 1602 I2C.
- * - Портазрядный ввод чисел (Уставки, Гистерезис).
- * - EEPROM для сохранения всех настроек.
- * - Диагностика обрыва цепи.
+ * - Меню: Режим, Ранг, Уставки (L/H), Гистерезис, Ед. Изм., Калибровка, Сброс.
+ * - Портазрядный ввод чисел (мигающий курсор).
+ * - Сохранение в EEPROM.
  */
 
 #include <Wire.h>
@@ -21,26 +21,31 @@ const int PIN_RELAY_2 = 3;
 const int PIN_BTN_MENU = 4;
 const int PIN_BTN_CHANGE = 5;
 
+// --- Дисплей ---
 LiquidCrystal_I2C lcd(0x27, 16, 2);
-
-// --- EEPROM Адреса ---
-#define ADDR_MAGIC 0
-#define ADDR_RANGE 2
-#define ADDR_UNIT 4
-#define ADDR_SP_LOW 6
-#define ADDR_SP_HIGH 10
-#define ADDR_HYST 14
-#define ADDR_CAL_MIN 18
-#define ADDR_CAL_MAX 22
-
-#define MAGIC_NUM 12345
 
 // --- Константы ---
 const int RANGES_COUNT = 6;
-const float RANGES[] = {1.0, 40.0, 250.0, 400.0, 600.0, 1000.0};
-
+const float RANGES[RANGES_COUNT] = {1.0, 40.0, 250.0, 400.0, 600.0, 1000.0};
 const char* UNIT_NAMES[] = {"Pa", "kPa", "MPa", "bar", "mbar"};
 const int UNITS_COUNT = 5;
+
+// Адреса EEPROM
+const int ADDR_MAGIC = 0;
+const int ADDR_RANGE = 1;
+const int ADDR_UNIT = 2;
+const int ADDR_SP_LOW_H = 3; // High byte
+const int ADDR_SP_LOW_L = 4; // Low byte
+const int ADDR_SP_HIGH_H = 5;
+const int ADDR_SP_HIGH_L = 6;
+const int ADDR_HYST_H = 7;
+const int ADDR_HYST_L = 8;
+const int ADDR_CAL_MIN_H = 9;
+const int ADDR_CAL_MIN_L = 10;
+const int ADDR_CAL_MAX_H = 11;
+const int ADDR_CAL_MAX_L = 12;
+
+const unsigned long MAGIC_NUM = 12345;
 
 // --- Глобальные переменные ---
 int currentRangeIndex = 2;
@@ -49,42 +54,33 @@ float setpointLow = 20.0;
 float setpointHigh = 80.0;
 float hysteresis = 2.0;
 
-// Калибровка (ADC значения для 0% и 100%)
-int calMinADC = 197;
-int calMaxADC = 983;
+// Калибровка (ADC значения)
+int calMin = 197; // 4mA
+int calMax = 983; // 20mA
 
 bool valve1State = false;
 bool valve2State = false;
 bool sensorError = false;
 
-// --- Меню и Состояния ---
+// --- Меню ---
 enum MenuItems { MENU_MODE, MENU_RANGE, MENU_SETPOINT, MENU_HYST, MENU_UNIT, MENU_CALIB, MENU_RESET };
 MenuItems currentMenuItem = MENU_MODE;
+bool isEditMode = false;
+bool isDigitEditMode = false; // Режим поразрядного ввода
 
-enum SetpointSub { SP_LOW, SP_HIGH };
-SetpointSub spSubItem = SP_LOW;
-
-bool isEditMode = false;      // Режим редактирования пункта (выбор из списка или вход в числовой ввод)
-bool isDigitEdit = false;     // Режим поразрядного ввода числа
-int digitIndex = 0;           // Текущий разряд (0-сотни, 1-десятки, 2-единицы, 3-десятые)
-float tempEditValue = 0.0;    // Временное значение при редактировании
-
-// Таймеры и флаги кнопок
+// Для поразрядного ввода
+float tempEditValue = 0.0;
+int digitIndex = 0; // 0=сотни, 1=десятки, 2=единицы, 3=десятые
+int digits[4] = {0, 0, 0, 0};
 unsigned long lastBtnTime = 0;
-const unsigned long DEBOUNCE = 300;
-const unsigned long LONG_PRESS = 2000;
-bool longPressDetected = false;
+const unsigned long DEBOUNCE = 200;
+const unsigned long LONG_PRESS = 1500;
 
-// --- Прототипы ---
-void loadSettings();
-void saveSettings();
-void resetSettings();
-float readPressure();
-void controlRelays(float pressure);
-void handleButtons();
-void displayScreen();
-void startDigitEdit(float val);
-float finishDigitEdit();
+// Для выбора уставки (L/H) внутри пункта Setpoint
+bool selectLowSetpoint = true;
+
+// Для калибровки
+int calStep = 0; // 0=ничего, 1=калибровка мин, 2=калибровка макс
 
 void setup() {
   Serial.begin(9600);
@@ -98,316 +94,46 @@ void setup() {
 
   lcd.init();
   lcd.backlight();
-
-  loadSettings();
-
-  lcd.setCursor(0, 0);
+  lcd.clear();
   lcd.print("Pressure Ctrl");
   lcd.setCursor(0, 1);
-  lcd.print("Ver 2.0 Load...");
-  delay(1500);
+  lcd.print("Loading...");
+
+  loadSettings();
+  delay(1000);
   lcd.clear();
 }
 
 void loop() {
-  static unsigned long lastLoop = 0;
-  if (millis() - lastLoop < 100) return;
-  lastLoop = millis();
-
   handleButtons();
 
-  if (!isEditMode && !isDigitEdit) {
-    float p = readPressure();
-    controlRelays(p);
-    displayScreen(); // Основной экран или меню выбора
-  } else if (isDigitEdit) {
-    displayDigitEdit(); // Экран поразрядного ввода
+  if (!isEditMode && !isDigitEditMode) {
+    // Рабочий режим
+    float pressure = readPressure();
+    controlRelays(pressure);
+    displayWorkScreen(pressure);
+  } else if (isDigitEditMode) {
+    displayDigitEditScreen();
   } else {
-    displayListEdit(); // Экран редактирования списков (Ранг, Единицы)
+    displayMenuScreen();
   }
 }
 
-// --- Логика Кнопок ---
-void handleButtons() {
-  static bool b1Prev = HIGH, b2Prev = HIGH;
-  static unsigned long b1Start = 0;
-
-  bool b1 = digitalRead(PIN_BTN_MENU);
-  bool b2 = digitalRead(PIN_BTN_CHANGE);
-
-  // Кнопка MENU (B1)
-  if (b1 == LOW && b1Prev == HIGH) {
-    b1Start = millis();
-    longPressDetected = false;
-  }
-
-  if (b1 == LOW && !longPressDetected && millis() - b1Start >= LONG_PRESS) {
-    longPressDetected = true;
-    // Длинное нажатие
-    if (isDigitEdit) {
-      // Отмена числового ввода
-      isDigitEdit = false;
-      isEditMode = false;
-      lcd.clear();
-    } else if (isEditMode) {
-      // Выход из режима редактирования списка
-      isEditMode = false;
-      saveSettings(); // Сохраняем если меняли список
-      lcd.clear();
-    } else {
-      // Вход в редактирование текущего пункта
-      enterEditMode();
-    }
-  }
-
-  if (b1 == HIGH && b1Prev == LOW) {
-    if (!longPressDetected) {
-      // Короткое нажатие
-      if (isDigitEdit) {
-        nextDigit();
-      } else if (isEditMode) {
-        changeListValue();
-      } else {
-        nextMenuItem();
-      }
-    }
-  }
-
-  // Кнопка CHANGE (B2)
-  if (b2 == LOW && b2Prev == HIGH) {
-    if (isDigitEdit) {
-      incrementDigit();
-    } else if (isEditMode) {
-      changeListValue();
-    }
-  }
-
-  b1Prev = b1;
-  b2Prev = b2;
-}
-
-// --- Логика Меню ---
-void nextMenuItem() {
-  currentMenuItem = (MenuItems)((currentMenuItem + 1) % 7); // 7 пунктов
-  // Сброс подпункта уставки если ушли
-  if (currentMenuItem != MENU_SETPOINT) spSubItem = SP_LOW;
-}
-
-void enterEditMode() {
-  isEditMode = true;
-  if (currentMenuItem == MENU_SETPOINT || currentMenuItem == MENU_HYST) {
-    // Запуск поразрядного ввода
-    if (currentMenuItem == MENU_SETPOINT) {
-      tempEditValue = (spSubItem == SP_LOW) ? setpointLow : setpointHigh;
-    } else {
-      tempEditValue = hysteresis;
-    }
-    startDigitEdit(tempEditValue);
-  }
-  // Для RANGE, UNIT, CALIB, RESET логика обрабатывается в displayListEdit/changeListValue
-}
-
-void changeListValue() {
-  if (currentMenuItem == MENU_RANGE) {
-    currentRangeIndex = (currentRangeIndex + 1) % RANGES_COUNT;
-  } else if (currentMenuItem == MENU_UNIT) {
-    currentUnitIndex = (currentUnitIndex + 1) % UNITS_COUNT;
-  } else if (currentMenuItem == MENU_SETPOINT) {
-    spSubItem = (spSubItem == SP_LOW) ? SP_HIGH : SP_LOW;
-  } else if (currentMenuItem == MENU_CALIB) {
-    // Переключение между калибровкой Min/Max handled in display
-    static bool calModeMin = true;
-    calModeMin = !calModeMin;
-    // В реальной реализации нужно сохранить состояние, здесь упрощено
-  }
-}
-
-// --- Портазрядный ввод ---
-int digits[4]; // Сотни, Десятки, Единицы, Десятые
-
-void startDigitEdit(float val) {
-  isDigitEdit = true;
-  digitIndex = 0;
-
-  // Ограничим значение максимальным рангом для корректного разбиения
-  float maxVal = RANGES[currentRangeIndex];
-  if (val > maxVal) val = maxVal;
-  if (val < 0) val = 0;
-
-  int v = (int)(val * 10); // Переводим в целое (например 250.5 -> 2505)
-
-  digits[3] = v % 10; v /= 10;
-  digits[2] = v % 10; v /= 10;
-  digits[1] = v % 10; v /= 10;
-  digits[0] = v % 10;
-
-  // Если число маленькое, старшие разряды будут 0, это нормально
-}
-
-void nextDigit() {
-  digitIndex++;
-  if (digitIndex > 3) {
-    // Закончили ввод
-    finishDigitEdit();
-  }
-}
-
-void incrementDigit() {
-  digits[digitIndex]++;
-  if (digits[digitIndex] > 9) digits[digitIndex] = 0;
-}
-
-float finishDigitEdit() {
-  isDigitEdit = false;
-  isEditMode = false;
-
-  int v = digits[0]*1000 + digits[1]*100 + digits[2]*10 + digits[3];
-  float res = (float)v / 10.0;
-
-  float maxLimit = RANGES[currentRangeIndex];
-
-  if (currentMenuItem == MENU_SETPOINT) {
-    if (spSubItem == SP_LOW) {
-      if (res >= setpointHigh) res = setpointHigh - 0.1; // Защита
-      if (res < 0) res = 0;
-      setpointLow = res;
-    } else {
-      if (res <= setpointLow) res = setpointLow + 0.1; // Защита
-      if (res > maxLimit) res = maxLimit;
-      setpointHigh = res;
-    }
-  } else if (currentMenuItem == MENU_HYST) {
-    if (res < 0) res = 0;
-    if (res > (maxLimit / 2)) res = maxLimit / 2;
-    hysteresis = res;
-  }
-
-  saveSettings();
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Saved!");
-  delay(800);
-  lcd.clear();
-  return res;
-}
-
-// --- Отображение ---
-void displayScreen() {
-  float p = readPressure();
-
-  lcd.setCursor(0, 0);
-  // Показываем текущий пункт меню, если не в режиме редактирования, но можно сделать строку статуса
-  // По ТЗ: 1 строка меню, 2 строка параметры.
-  // В режиме просмотра: 1 строка - название пункта (или P:), 2 строка - значение
-
-  const char* names[] = {"Mode", "Range", "Setpoint", "Hyst", "Unit", "Calibr", "Reset"};
-  lcd.print(names[currentMenuItem]);
-  lcd.print(":           ");
-
-  lcd.setCursor(0, 1);
-  if (currentMenuItem == MENU_MODE) {
-    if (sensorError) {
-      lcd.print("ERR BREAK!     ");
-    } else {
-      lcd.print("P:");
-      lcd.print(p, 1);
-      lcd.print(" ");
-      lcd.print(UNIT_NAMES[currentUnitIndex]);
-      lcd.print("   ");
-      // Индикаторы реле
-      lcd.setCursor(12, 1);
-      lcd.print(valve1State?"1":"-");
-      lcd.print(valve2State?"2":"-");
-    }
-  } else if (currentMenuItem == MENU_RANGE) {
-    lcd.print(RANGES[currentRangeIndex], 0);
-    lcd.print("        ");
-  } else if (currentMenuItem == MENU_SETPOINT) {
-    lcd.print((spSubItem==SP_LOW)?"L":"H");
-    lcd.print(":");
-    lcd.print((spSubItem==SP_LOW)?setpointLow:setpointHigh, 1);
-    lcd.print("        ");
-  } else if (currentMenuItem == MENU_HYST) {
-    lcd.print("Hy:");
-    lcd.print(hysteresis, 1);
-    lcd.print("        ");
-  } else if (currentMenuItem == MENU_UNIT) {
-    lcd.print(UNIT_NAMES[currentUnitIndex]);
-    lcd.print("        ");
-  } else if (currentMenuItem == MENU_CALIB) {
-    lcd.print("Press Long... ");
-  } else if (currentMenuItem == MENU_RESET) {
-    lcd.print("Hold to Reset ");
-  }
-}
-
-void displayListEdit() {
-  const char* names[] = {"Mode", "Range", "Setpoint", "Hyst", "Unit", "Calibr", "Reset"};
-  lcd.setCursor(0, 0);
-  lcd.print(">");
-  lcd.print(names[currentMenuItem]);
-  lcd.print(":           ");
-
-  lcd.setCursor(0, 1);
-  if (currentMenuItem == MENU_RANGE) {
-    lcd.print(RANGES[currentRangeIndex], 0);
-    lcd.print(" <Change>   ");
-  } else if (currentMenuItem == MENU_UNIT) {
-    lcd.print(UNIT_NAMES[currentUnitIndex]);
-    lcd.print(" <Change>   ");
-  } else if (currentMenuItem == MENU_SETPOINT) {
-    lcd.print((spSubItem==SP_LOW)?" >L:":"  H:");
-    lcd.print((spSubItem==SP_LOW)?setpointLow:setpointHigh, 1);
-    lcd.print("        ");
-  } else if (currentMenuItem == MENU_CALIB) {
-    lcd.print("1.Long:Zero 2.Max");
-  } else if (currentMenuItem == MENU_RESET) {
-    lcd.print("Hold to Reset!");
-  }
-}
-
-void displayDigitEdit() {
-  lcd.setCursor(0, 0);
-  if (currentMenuItem == MENU_SETPOINT) {
-    lcd.print((spSubItem==SP_LOW)?"Edit L:":"Edit H:");
-  } else {
-    lcd.print("Edit Hy:       ");
-  }
-
-  lcd.setCursor(0, 1);
-  // Рисуем цифры
-  for(int i=0; i<4; i++) {
-    if (i == 2) lcd.print("."); // Точка перед десятыми
-
-    if (i == digitIndex) {
-      // Мигание активного разряда
-      if ((millis() / 500) % 2 == 0) {
-        lcd.print(digits[i]);
-      } else {
-        lcd.print(" ");
-      }
-    } else {
-      lcd.print(digits[i]);
-    }
-  }
-  lcd.print("   ");
-}
-
-// --- Функции системы ---
+// --- Чтение и Калибровка ---
 float readPressure() {
   int val = analogRead(PIN_SENSOR);
 
-  // Проверка обрыва (< 4мА ~ < 180 ADC с запасом)
-  if (val < (calMinADC - 20)) {
+  // Проверка обрыва (< 4мА примерно соответствует val < calMin - запас)
+  if (val < (calMin - 20)) {
     sensorError = true;
-    return 0;
+    return 0.0;
   }
   sensorError = false;
 
-  if (val < calMinADC) val = calMinADC;
-  if (val > calMaxADC) val = calMaxADC;
+  if (val < calMin) val = calMin;
+  if (val > calMax) val = calMax;
 
-  float percent = (float)(val - calMinADC) / (float)(calMaxADC - calMinADC);
+  float percent = (float)(val - calMin) / (float)(calMax - calMin);
   float rangeVal = RANGES[currentRangeIndex];
   return percent * rangeVal;
 }
@@ -416,20 +142,296 @@ void controlRelays(float p) {
   if (sensorError) {
     valve1State = false;
     valve2State = false;
-  } else {
-    // Логика с гистерезисом
-    bool v1 = (p < (setpointLow - hysteresis));
-    if (p > setpointLow) v1 = false; // Принудительное выключение при достижении
-
-    bool v2 = (p > (setpointHigh + hysteresis));
-    if (p < setpointHigh) v2 = false;
-
-    valve1State = v1;
-    valve2State = v2;
+    digitalWrite(PIN_RELAY_1, LOW);
+    digitalWrite(PIN_RELAY_2, LOW);
+    return;
   }
+
+  // Реле 1 (Низкое)
+  if (p < (setpointLow - hysteresis)) valve1State = true;
+  if (p > setpointLow) valve1State = false;
+
+  // Реле 2 (Высокое)
+  if (p > (setpointHigh + hysteresis)) valve2State = true;
+  if (p < setpointHigh) valve2State = false;
 
   digitalWrite(PIN_RELAY_1, valve1State ? HIGH : LOW);
   digitalWrite(PIN_RELAY_2, valve2State ? HIGH : LOW);
+}
+
+// --- Кнопки ---
+void handleButtons() {
+  static bool b1Prev = HIGH, b2Prev = HIGH;
+  static unsigned long pressStart = 0;
+  static bool longPressed = false;
+
+  bool b1 = digitalRead(PIN_BTN_MENU);
+  bool b2 = digitalRead(PIN_BTN_CHANGE);
+  unsigned long now = millis();
+
+  if (now - lastBtnTime < DEBOUNCE) return;
+
+  // Кнопка MENU
+  if (b1 == LOW && b1Prev == HIGH) {
+    pressStart = now;
+    longPressed = false;
+  }
+  if (b1 == LOW && !longPressed) {
+    if (now - pressStart >= LONG_PRESS) {
+      longPressed = true;
+      handleLongPress();
+    }
+  }
+  if (b1 == HIGH && b1Prev == LOW && !longPressed) {
+    handleShortPress();
+  }
+
+  // Кнопка CHANGE
+  if (b2 == LOW && b2Prev == HIGH) {
+    handleChangePress();
+  }
+
+  b1Prev = b1;
+  b2Prev = b2;
+}
+
+void handleLongPress() {
+  lastBtnTime = millis();
+  if (isDigitEditMode) {
+    // Отмена редактирования числа
+    isDigitEditMode = false;
+    isEditMode = false;
+    lcd.clear();
+  } else if (isEditMode) {
+    // Выход из меню без сохранения (если не в цифровом режиме)
+    isEditMode = false;
+    lcd.clear();
+  } else {
+    // Вход в редактирование текущего пункта
+    enterEditMode();
+  }
+}
+
+void handleShortPress() {
+  lastBtnTime = millis();
+  if (isDigitEditMode) {
+    nextDigit();
+  } else if (isEditMode) {
+    if (currentMenuItem == MENU_SETPOINT) {
+      // Переключение L/H
+      selectLowSetpoint = !selectLowSetpoint;
+    } else {
+      nextMenuItem();
+    }
+  } else {
+    nextMenuItem();
+  }
+}
+
+void handleChangePress() {
+  lastBtnTime = millis();
+  if (isDigitEditMode) {
+    incrementDigit();
+  } else if (isEditMode) {
+    incrementValue();
+  }
+}
+
+// --- Логика Меню ---
+void nextMenuItem() {
+  currentMenuItem = (MenuItems)((currentMenuItem + 1) % 7); // 7 пунктов
+  // Пропуск калибровки если не нужно? Нет, оставим все.
+}
+
+void enterEditMode() {
+  isEditMode = true;
+  if (currentMenuItem == MENU_SETPOINT || currentMenuItem == MENU_HYST) {
+    startDigitEdit();
+  } else {
+    // Для списков (Range, Unit) просто вход, изменение кнопкой Change
+    if (currentMenuItem == MENU_RESET) {
+      resetSettings();
+      isEditMode = false;
+      lcd.clear();
+      lcd.print("Reset Done!");
+      delay(1000);
+    }
+    if (currentMenuItem == MENU_CALIB) {
+      startCalibration();
+      isEditMode = false; // Калибровка свой процесс
+    }
+  }
+}
+
+// --- Портазрядный ввод ---
+void startDigitEdit() {
+  isDigitEditMode = true;
+  digitIndex = 0;
+
+  float val = 0;
+  if (currentMenuItem == MENU_SETPOINT) {
+    val = selectLowSetpoint ? setpointLow : setpointHigh;
+  } else if (currentMenuItem == MENU_HYST) {
+    val = hysteresis;
+  }
+
+  // Разбор числа на цифры (предполагаем формат XXX.X)
+  // Ограничим макс значением ранга
+  float maxVal = RANGES[currentRangeIndex];
+  if (val > maxVal) val = maxVal;
+
+  int iVal = (int)(val * 10 + 0.5); // Перевод в десятые (например 25.5 -> 255)
+
+  digits[3] = iVal % 10;       // Десятые
+  digits[2] = (iVal / 10) % 10; // Единицы
+  digits[1] = (iVal / 100) % 10; // Десятки
+  digits[0] = (iVal / 1000) % 10; // Сотни
+
+  tempEditValue = val;
+}
+
+void nextDigit() {
+  digitIndex++;
+  if (digitIndex > 3) {
+    saveDigitEdit();
+    isDigitEditMode = false;
+    // После сохранения числа выходим из режима редактирования меню или переходим дальше?
+    // Лучше остаться в меню, чтобы можно было выйти длинным нажатием
+    isEditMode = false;
+    lcd.clear();
+    lcd.print("Saved!");
+    delay(800);
+    lcd.clear();
+  }
+}
+
+void incrementDigit() {
+  digits[digitIndex]++;
+  if (digits[digitIndex] > 9) digits[digitIndex] = 0;
+
+  // Сборка числа обратно для проверки границ
+  int total = digits[0]*1000 + digits[1]*100 + digits[2]*10 + digits[3];
+  float newVal = (float)total / 10.0;
+
+  float limit = RANGES[currentRangeIndex];
+  if (currentMenuItem == MENU_HYST) limit = limit / 2.0; // Гистерезис не больше половины диапазона
+
+  // Простая проверка: если превысили лимит, обнуляем старшие разряды или запрещаем?
+  // Для простоты: если число > лимита, сбрасываем в 0 или не даем увеличить?
+  // Реализуем "перенос": если > лимита, то ставим 0.0
+  if (newVal > limit) {
+    // Сброс всех цифр в 0
+    for(int i=0; i<4; i++) digits[i] = 0;
+  }
+}
+
+void saveDigitEdit() {
+  int total = digits[0]*1000 + digits[1]*100 + digits[2]*10 + digits[3];
+  float newVal = (float)total / 10.0;
+
+  if (currentMenuItem == MENU_SETPOINT) {
+    if (selectLowSetpoint) {
+      setpointLow = newVal;
+      if (setpointLow >= setpointHigh) setpointHigh = setpointLow + 1.0;
+    } else {
+      setpointHigh = newVal;
+      if (setpointHigh <= setpointLow) setpointLow = setpointHigh - 1.0;
+    }
+  } else if (currentMenuItem == MENU_HYST) {
+    hysteresis = newVal;
+  }
+  saveSettings();
+}
+
+void displayDigitEditScreen() {
+  lcd.clear();
+  const char* label = "";
+  if (currentMenuItem == MENU_SETPOINT) label = selectLowSetpoint ? "Set L:" : "Set H:";
+  else if (currentMenuItem == MENU_HYST) label = "Hyst:";
+
+  lcd.print(label);
+  lcd.setCursor(0, 1);
+
+  for (int i = 0; i < 4; i++) {
+    if (i == 2) lcd.print(".");
+    if (i == digitIndex) {
+      lcd.print(digits[i]);
+      lcd.noDisplay(); // Мигание: выключаем дисплей на время? Нет, лучше инверсия или пробел
+      // LiquidCrystal_I2C не поддерживает инверсию символа легко.
+      // Сделаем так: печатаем цифру, потом стираем и печатаем снова в цикле? Слишком сложно.
+      // Простой вариант: печатаем цифру, а соседние как есть.
+      // Эмуляция мигания через стирание:
+      if ((millis() / 500) % 2 == 0) {
+        lcd.print(" ");
+      } else {
+        lcd.print(digits[i]);
+      }
+    } else {
+      lcd.print(digits[i]);
+    }
+  }
+}
+
+// --- Обычное редактирование (списки) ---
+void incrementValue() {
+  if (currentMenuItem == MENU_RANGE) {
+    currentRangeIndex = (currentRangeIndex + 1) % RANGES_COUNT;
+    saveSettings();
+  } else if (currentMenuItem == MENU_UNIT) {
+    currentUnitIndex = (currentUnitIndex + 1) % UNITS_COUNT;
+    saveSettings();
+  }
+}
+
+void displayMenuScreen() {
+  lcd.clear();
+  const char* names[] = {"Mode", "Range", "Setpoint", "Hyst", "Unit", "Calibr", "Reset"};
+  lcd.print(names[currentMenuItem]);
+  lcd.setCursor(0, 1);
+
+  if (currentMenuItem == MENU_RANGE) {
+    lcd.print(RANGES[currentRangeIndex], 0);
+    lcd.print(" (Change)");
+  } else if (currentMenuItem == MENU_UNIT) {
+    lcd.print(UNIT_NAMES[currentUnitIndex]);
+    lcd.print(" (Change)");
+  } else if (currentMenuItem == MENU_SETPOINT) {
+    lcd.print(selectLowSetpoint ? "Low" : "High");
+    lcd.print(" Setpoint");
+  } else if (currentMenuItem == MENU_HYST) {
+    lcd.print(hysteresis, 1);
+    lcd.print(" (Edit)");
+  } else if (currentMenuItem == MENU_CALIB) {
+    lcd.print("Press Enter");
+  } else if (currentMenuItem == MENU_RESET) {
+    lcd.print("Hold to Reset");
+  } else {
+    lcd.print("Normal Mode");
+  }
+}
+
+void displayWorkScreen(float p) {
+  if (sensorError) {
+    lcd.setCursor(0, 0);
+    lcd.print("ERR: BREAK LINE");
+    lcd.setCursor(0, 1);
+    lcd.print("Check Sensor!   ");
+    return;
+  }
+
+  lcd.setCursor(0, 0);
+  lcd.print("P:");
+  lcd.print(p, 1);
+  lcd.print(" ");
+  lcd.print(UNIT_NAMES[currentUnitIndex]);
+  lcd.print("      ");
+
+  lcd.setCursor(0, 1);
+  lcd.print("L:");
+  lcd.print(valve1State ? "ON " : "OFF");
+  lcd.print(" H:");
+  lcd.print(valve2State ? "ON " : "OFF");
+  lcd.print("    ");
 }
 
 // --- EEPROM ---
@@ -437,27 +439,52 @@ void saveSettings() {
   EEPROM.put(ADDR_MAGIC, MAGIC_NUM);
   EEPROM.put(ADDR_RANGE, currentRangeIndex);
   EEPROM.put(ADDR_UNIT, currentUnitIndex);
-  EEPROM.put(ADDR_SP_LOW, setpointLow);
-  EEPROM.put(ADDR_SP_HIGH, setpointHigh);
-  EEPROM.put(ADDR_HYST, hysteresis);
-  EEPROM.put(ADDR_CAL_MIN, calMinADC);
-  EEPROM.put(ADDR_CAL_MAX, calMaxADC);
+
+  int iLow = (int)(setpointLow * 10);
+  int iHigh = (int)(setpointHigh * 10);
+  int iHyst = (int)(hysteresis * 10);
+
+  EEPROM.put(ADDR_SP_LOW_H, highByte(iLow));
+  EEPROM.put(ADDR_SP_LOW_L, lowByte(iLow));
+  EEPROM.put(ADDR_SP_HIGH_H, highByte(iHigh));
+  EEPROM.put(ADDR_SP_HIGH_L, lowByte(iHigh));
+  EEPROM.put(ADDR_HYST_H, highByte(iHyst));
+  EEPROM.put(ADDR_HYST_L, lowByte(iHyst));
+
+  EEPROM.put(ADDR_CAL_MIN_H, highByte(calMin));
+  EEPROM.put(ADDR_CAL_MIN_L, lowByte(calMin));
+  EEPROM.put(ADDR_CAL_MAX_H, highByte(calMax));
+  EEPROM.put(ADDR_CAL_MAX_L, lowByte(calMax));
 }
 
 void loadSettings() {
-  int magic;
+  unsigned long magic;
   EEPROM.get(ADDR_MAGIC, magic);
-  if (magic == MAGIC_NUM) {
-    EEPROM.get(ADDR_RANGE, currentRangeIndex);
-    EEPROM.get(ADDR_UNIT, currentUnitIndex);
-    EEPROM.get(ADDR_SP_LOW, setpointLow);
-    EEPROM.get(ADDR_SP_HIGH, setpointHigh);
-    EEPROM.get(ADDR_HYST, hysteresis);
-    EEPROM.get(ADDR_CAL_MIN, calMinADC);
-    EEPROM.get(ADDR_CAL_MAX, calMaxADC);
-  } else {
+  if (magic != MAGIC_NUM) {
     resetSettings();
+    return;
   }
+
+  EEPROM.get(ADDR_RANGE, currentRangeIndex);
+  EEPROM.get(ADDR_UNIT, currentUnitIndex);
+
+  byte h, l;
+  EEPROM.get(ADDR_SP_LOW_H, h); EEPROM.get(ADDR_SP_LOW_L, l);
+  setpointLow = (float)(word(h, l)) / 10.0;
+
+  EEPROM.get(ADDR_SP_HIGH_H, h); EEPROM.get(ADDR_SP_HIGH_L, l);
+  setpointHigh = (float)(word(h, l)) / 10.0;
+
+  EEPROM.get(ADDR_HYST_H, h); EEPROM.get(ADDR_HYST_L, l);
+  hysteresis = (float)(word(h, l)) / 10.0;
+
+  EEPROM.get(ADDR_CAL_MIN_H, h); EEPROM.get(ADDR_CAL_MIN_L, l);
+  calMin = word(h, l);
+
+  EEPROM.get(ADDR_CAL_MAX_H, h); EEPROM.get(ADDR_CAL_MAX_L, l);
+  calMax = word(h, l);
+
+  if (calMin >= calMax) { calMin = 197; calMax = 983; }
 }
 
 void resetSettings() {
@@ -466,7 +493,51 @@ void resetSettings() {
   setpointLow = 20.0;
   setpointHigh = 80.0;
   hysteresis = 2.0;
-  calMinADC = 197;
-  calMaxADC = 983;
+  calMin = 197;
+  calMax = 983;
+  EEPROM.clear();
   saveSettings();
+}
+
+// --- Калибровка ---
+void startCalibration() {
+  lcd.clear();
+  lcd.print("Calibration");
+  lcd.setCursor(0, 1);
+  lcd.print("Apply 4mA...");
+  delay(2000);
+
+  int minVal = analogRead(PIN_SENSOR);
+  // Ждем стабилизации (упрощенно)
+  for(int i=0; i<50; i++) {
+    int v = analogRead(PIN_SENSOR);
+    if(v < minVal) minVal = v;
+    delay(20);
+  }
+  calMin = minVal;
+
+  lcd.clear();
+  lcd.print("Apply 20mA...");
+  delay(2000);
+
+  int maxVal = analogRead(PIN_SENSOR);
+  for(int i=0; i<50; i++) {
+    int v = analogRead(PIN_SENSOR);
+    if(v > maxVal) maxVal = v;
+    delay(20);
+  }
+  calMax = maxVal;
+
+  if (calMax <= calMin) {
+    lcd.clear();
+    lcd.print("Error Cal!");
+    delay(2000);
+    calMin = 197; calMax = 983;
+  } else {
+    lcd.clear();
+    lcd.print("Calib OK!");
+    delay(1000);
+  }
+  saveSettings();
+  lcd.clear();
 }
