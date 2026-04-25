@@ -495,7 +495,7 @@ void resetSettings() {
   hysteresis = 2.0;
   calMin = 197;
   calMax = 983;
-  EEPROM.clear();
+
   saveSettings();
 }
 
