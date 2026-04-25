@@ -34,8 +34,8 @@ const int UNITS_COUNT = 5;
 const int ADDR_MAGIC = 0;
 const int ADDR_RANGE = 1;
 const int ADDR_UNIT = 2;
-const int ADDR_SP_LOW_H = 3; // High byte
-const int ADDR_SP_LOW_L = 4; // Low byte
+const int ADDR_SP_LOW_H = 3;
+const int ADDR_SP_LOW_L = 4;
 const int ADDR_SP_HIGH_H = 5;
 const int ADDR_SP_HIGH_L = 6;
 const int ADDR_HYST_H = 7;
@@ -78,9 +78,6 @@ const unsigned long LONG_PRESS = 1500;
 
 // Для выбора уставки (L/H) внутри пункта Setpoint
 bool selectLowSetpoint = true;
-
-// Для калибровки
-int calStep = 0; // 0=ничего, 1=калибровка мин, 2=калибровка макс
 
 void setup() {
   Serial.begin(9600);
@@ -240,7 +237,6 @@ void handleChangePress() {
 // --- Логика Меню ---
 void nextMenuItem() {
   currentMenuItem = (MenuItems)((currentMenuItem + 1) % 7); // 7 пунктов
-  // Пропуск калибровки если не нужно? Нет, оставим все.
 }
 
 void enterEditMode() {
@@ -275,7 +271,6 @@ void startDigitEdit() {
     val = hysteresis;
   }
 
-  // Разбор числа на цифры (предполагаем формат XXX.X)
   // Ограничим макс значением ранга
   float maxVal = RANGES[currentRangeIndex];
   if (val > maxVal) val = maxVal;
@@ -295,8 +290,6 @@ void nextDigit() {
   if (digitIndex > 3) {
     saveDigitEdit();
     isDigitEditMode = false;
-    // После сохранения числа выходим из режима редактирования меню или переходим дальше?
-    // Лучше остаться в меню, чтобы можно было выйти длинным нажатием
     isEditMode = false;
     lcd.clear();
     lcd.print("Saved!");
@@ -316,11 +309,8 @@ void incrementDigit() {
   float limit = RANGES[currentRangeIndex];
   if (currentMenuItem == MENU_HYST) limit = limit / 2.0; // Гистерезис не больше половины диапазона
 
-  // Простая проверка: если превысили лимит, обнуляем старшие разряды или запрещаем?
-  // Для простоты: если число > лимита, сбрасываем в 0 или не даем увеличить?
-  // Реализуем "перенос": если > лимита, то ставим 0.0
+  // Если число > лимита, сбрасываем все цифры в 0
   if (newVal > limit) {
-    // Сброс всех цифр в 0
     for(int i=0; i<4; i++) digits[i] = 0;
   }
 }
@@ -355,12 +345,7 @@ void displayDigitEditScreen() {
   for (int i = 0; i < 4; i++) {
     if (i == 2) lcd.print(".");
     if (i == digitIndex) {
-      lcd.print(digits[i]);
-      lcd.noDisplay(); // Мигание: выключаем дисплей на время? Нет, лучше инверсия или пробел
-      // LiquidCrystal_I2C не поддерживает инверсию символа легко.
-      // Сделаем так: печатаем цифру, потом стираем и печатаем снова в цикле? Слишком сложно.
-      // Простой вариант: печатаем цифру, а соседние как есть.
-      // Эмуляция мигания через стирание:
+      // Мигание активного разряда
       if ((millis() / 500) % 2 == 0) {
         lcd.print(" ");
       } else {
@@ -496,6 +481,7 @@ void resetSettings() {
   calMin = 197;
   calMax = 983;
 
+  // Исправлено: убираем EEPROM.clear(), просто перезаписываем значения
   saveSettings();
 }
 
@@ -508,7 +494,6 @@ void startCalibration() {
   delay(2000);
 
   int minVal = analogRead(PIN_SENSOR);
-  // Ждем стабилизации (упрощенно)
   for(int i=0; i<50; i++) {
     int v = analogRead(PIN_SENSOR);
     if(v < minVal) minVal = v;
