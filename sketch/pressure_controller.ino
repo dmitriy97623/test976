@@ -5,24 +5,29 @@
  * Слои: hardware, logic, ui.
  */
 
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-#include <EEPROM.h>
-#include "src/hardware.h"
-#include "src/logic.h"
-#include "src/ui.h"
+// Подключение необходимых библиотек
+#include <Wire.h>                    // Библиотека для работы с шиной I2C
+#include <LiquidCrystal_I2C.h>       // Библиотека для управления LCD-дисплеем 1602 по I2C
+#include <EEPROM.h>                 // Библиотека для работы с энергонезависимой памятью EEPROM
 
+// Подключение заголовочных файлов модулей проекта
+#include "src/hardware.h"           // Модуль аппаратного уровня: пины, датчики, реле, EEPROM
+#include "src/logic.h"              // Модуль бизнес-логики: расчёт давления, управление реле
+#include "src/ui.h"                 // Модуль пользовательского интерфейса: дисплей, кнопки, меню
+
+// --- Инициализация ---
 void setup() {
-  Serial.begin(9600);
-  hardwareSetup();
-  logicSetup();
-  uiSetup();
-  loadSettings();
-  delay(1000);
-  lcd.clear();
+  Serial.begin(9600);               // Инициализация последовательного порта для отладки
+  hardwareSetup();                  // Инициализация аппаратных компонентов (пины, реле, кнопки)
+  logicSetup();                     // Инициализация логики (если требуется)
+  uiSetup();                        // Инициализация интерфейса (дисплей)
+  loadSettings();                   // Загрузка сохранённых настроек из EEPROM
+  delay(1000);                      // Задержка для завершения инициализации
+  lcd.clear();                      // Очистка экрана перед началом работы
 }
 
+// --- Основной цикл ---
 void loop() {
-  handleButtons();
-  updateDisplay();
+  handleButtons();                // Обработка нажатий кнопок (антидребезг, короткое/длинное нажатие)
+  updateDisplay();                  // Обновление отображаемой информации на дисплее
 }
