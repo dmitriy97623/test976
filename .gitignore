@@ -25,6 +25,8 @@ libraries/
 # Editors
 .vscode/
 .idea/
+.gigacode/
+.gigaide/
 
 # OS specific
 .DS_Store

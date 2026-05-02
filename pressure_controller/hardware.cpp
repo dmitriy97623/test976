@@ -1,35 +1,12 @@
 #include "hardware.h"
-
-// --- Пиновка ---
-const int PIN_SENSOR = A0;
-const int PIN_RELAY_1 = 2;
-const int PIN_RELAY_2 = 3;
-const int PIN_BTN_MENU = 4;
-const int PIN_BTN_CHANGE = 5;
-
-// --- EEPROM ---
-const int ADDR_MAGIC = 0;
-const int ADDR_RANGE = 1;
-const int ADDR_UNIT = 2;
-const int ADDR_SP_LOW_H = 3;
-const int ADDR_SP_LOW_L = 4;
-const int ADDR_SP_HIGH_H = 5;
-const int ADDR_SP_HIGH_L = 6;
-const int ADDR_HYST_H = 7;
-const int ADDR_HYST_L = 8;
-const int ADDR_CAL_MIN_H = 9;
-const int ADDR_CAL_MIN_L = 10;
-const int ADDR_CAL_MAX_H = 11;
-const int ADDR_CAL_MAX_L = 12;
-
-const unsigned long MAGIC_NUM = 12345;
+#include "logic.h"
 
 // Состояние реле
 static bool valve1State = false;
 static bool valve2State = false;
 
-// Состояние датчика
-static bool sensorErrorFlag = false;
+// Флаг ошибки датчика — доступен через extern из logic/ui
+bool sensorErrorFlag = false;
 
 void hardwareSetup() {
   pinMode(PIN_RELAY_1, OUTPUT);
@@ -43,10 +20,6 @@ void hardwareSetup() {
 
 int readSensorRaw() {
   return analogRead(PIN_SENSOR);
-}
-
-bool isSensorError() {
-  return sensorErrorFlag;
 }
 
 void setValveState(int valveNum, bool state) {
@@ -66,21 +39,22 @@ bool getValveState(int valveNum) {
 }
 
 // --- EEPROM ---
+
 void saveSettings() {
   EEPROM.put(ADDR_MAGIC, MAGIC_NUM);
   EEPROM.put(ADDR_RANGE, currentRangeIndex);
   EEPROM.put(ADDR_UNIT, currentUnitIndex);
 
-  int iLow = (int)(setpointLow * 10);
+  int iLow  = (int)(setpointLow * 10);
   int iHigh = (int)(setpointHigh * 10);
   int iHyst = (int)(hysteresis * 10);
 
-  EEPROM.put(ADDR_SP_LOW_H, highByte(iLow));
-  EEPROM.put(ADDR_SP_LOW_L, lowByte(iLow));
+  EEPROM.put(ADDR_SP_LOW_H,  highByte(iLow));
+  EEPROM.put(ADDR_SP_LOW_L,  lowByte(iLow));
   EEPROM.put(ADDR_SP_HIGH_H, highByte(iHigh));
   EEPROM.put(ADDR_SP_HIGH_L, lowByte(iHigh));
-  EEPROM.put(ADDR_HYST_H, highByte(iHyst));
-  EEPROM.put(ADDR_HYST_L, lowByte(iHyst));
+  EEPROM.put(ADDR_HYST_H,    highByte(iHyst));
+  EEPROM.put(ADDR_HYST_L,    lowByte(iHyst));
 
   EEPROM.put(ADDR_CAL_MIN_H, highByte(calMin));
   EEPROM.put(ADDR_CAL_MIN_L, lowByte(calMin));
@@ -100,14 +74,14 @@ void loadSettings() {
   EEPROM.get(ADDR_UNIT, currentUnitIndex);
 
   byte h, l;
-  EEPROM.get(ADDR_SP_LOW_H, h); EEPROM.get(ADDR_SP_LOW_L, l);
-  setpointLow = (float)(word(h, l)) / 10.0;
+  EEPROM.get(ADDR_SP_LOW_H, h);  EEPROM.get(ADDR_SP_LOW_L, l);
+  setpointLow = (float)(word(h, l)) / 10.0f;
 
   EEPROM.get(ADDR_SP_HIGH_H, h); EEPROM.get(ADDR_SP_HIGH_L, l);
-  setpointHigh = (float)(word(h, l)) / 10.0;
+  setpointHigh = (float)(word(h, l)) / 10.0f;
 
-  EEPROM.get(ADDR_HYST_H, h); EEPROM.get(ADDR_HYST_L, l);
-  hysteresis = (float)(word(h, l)) / 10.0;
+  EEPROM.get(ADDR_HYST_H, h);    EEPROM.get(ADDR_HYST_L, l);
+  hysteresis = (float)(word(h, l)) / 10.0f;
 
   EEPROM.get(ADDR_CAL_MIN_H, h); EEPROM.get(ADDR_CAL_MIN_L, l);
   calMin = word(h, l);
@@ -120,12 +94,12 @@ void loadSettings() {
 
 void resetSettings() {
   currentRangeIndex = 2;
-  currentUnitIndex = 1;
-  setpointLow = 20.0;
-  setpointHigh = 80.0;
-  hysteresis = 2.0;
-  calMin = 197;
-  calMax = 983;
+  currentUnitIndex  = 1;
+  setpointLow       = 20.0f;
+  setpointHigh      = 80.0f;
+  hysteresis        = 2.0f;
+  calMin            = 197;
+  calMax            = 983;
 
   saveSettings();
 }
