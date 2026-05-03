@@ -496,6 +496,9 @@ static void displayWorkMain(float pressure) {
   if (sensorErrorFlag) {
     snprintf(l0, sizeof(l0), "ERR: BREAK LINE");
     snprintf(l1, sizeof(l1), "Check Sensor!  ");
+  } else if (watchdogResetFlag) {
+    snprintf(l0, sizeof(l0), "WDT RESET!      ");
+    snprintf(l1, sizeof(l1), "P:%-6.1f%s    ", pressure, UNIT_NAMES[currentUnitIndex]);
   } else {
     snprintf(l0, sizeof(l0), "P:%-6.1f%s    ", pressure, UNIT_NAMES[currentUnitIndex]);
     snprintf(l1, sizeof(l1), "L:%s H:%s    ",

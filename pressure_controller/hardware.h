@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <avr/wdt.h>  // Watchdog Timer
+#include <avr/power.h> // Power management
 
 // --- Пиновка ---
 constexpr int PIN_SENSOR     = A0;
@@ -24,23 +26,34 @@ constexpr int ADDR_CAL_MIN_H = 9;
 constexpr int ADDR_CAL_MIN_L = 10;
 constexpr int ADDR_CAL_MAX_H = 11;
 constexpr int ADDR_CAL_MAX_L = 12;
+constexpr int ADDR_WDT_FLAG  = 13;  // Флаг сброса от Watchdog
 
 constexpr unsigned long MAGIC_NUM = 12345;
 
 // Флаг ошибки датчика (устанавливается в logic, читается везде)
 extern bool sensorErrorFlag;
 
+// Статус сброса (нормальный / watchdog)
+extern bool watchdogResetFlag;
+
 // Инициализация оборудования
 void hardwareSetup();
 
-// Работа с датчиком
+// Watchdog
+void wdtSetup();
+void wdtReset();
+void clearWdtResetFlag();
+
+// Работа с датчиком (с усреднением и шумоподавлением)
 int readSensorRaw();
+int readSensorFiltered(uint8_t samples = 16);
 
 // Работа с реле
 void setValveState(int valveNum, bool state);
 bool getValveState(int valveNum);
 
-// Работа с EEPROM
+// Работа с EEPROM (с защитой от частых записей)
 void saveSettings();
 void loadSettings();
 void resetSettings();
+bool shouldSaveSettings();  // Возвращает true, если значения изменились
