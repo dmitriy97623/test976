@@ -29,6 +29,7 @@ static constexpr unsigned long TIMEOUT_EDIT   = 60000;  // 60 с — редак�
 static constexpr unsigned long DEBOUNCE       = 200;    // мс — антидребезг
 static constexpr unsigned long LONG_PRESS     = 1500;   // мс — порог длинного нажатия
 static constexpr unsigned long BLINK_PERIOD   = 250;    // мс — период мигания курсора
+static constexpr unsigned long MSG_DISPLAY_TIME = 1500;  // мс — время показа сообщений
 
 // ============================================================================
 // Дисплей
@@ -40,6 +41,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 // ============================================================================
 static UiState  uiState        = STATE_WORK;
 static MenuItems currentMenu   = MENU_RANGE;
+static unsigned long msgShowTime = 0;  // Время начала показа сообщения
 static unsigned long lastActivity = 0;  // Время последнего действия пользователя
 
 // --- Поразрядный ввод ---
@@ -382,12 +384,11 @@ static void onMenuLong() {
       if (currentMenu == MENU_RESET) {
         resetSettings();
         goToWork();
-        // Кратко показать подтверждение
+        // Показать подтверждение без блокировки
         invalidateCache();
         writeLine(0, "Reset Done!    ");
         writeLine(1, "               ");
-        delay(1500);
-        invalidateCache();
+        msgShowTime = millis();
       }
       // MENU_CALIB: подтверждение калибровки (заглушка)
       break;
@@ -630,6 +631,11 @@ static void displayConfirm() {
 // ============================================================================
 
 void updateDisplay(float pressure) {
+  // Автоматическое скрытие сообщения после сброса
+  if (msgShowTime > 0 && (millis() - msgShowTime >= MSG_DISPLAY_TIME)) {
+    msgShowTime = 0;
+    invalidateCache();
+  }
   checkTimeout();
 
   // Обрыв датчика — аварийный экран ВНЕ ЗАВИСИМОСТИ от состояния меню
