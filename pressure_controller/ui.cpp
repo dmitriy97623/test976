@@ -596,7 +596,7 @@ static void displayEditDigit() {
   char num[6];
   int pos = 0;
   for (int i = 0; i < 4; i++) {
-    if (i == 2) num[pos++] = '.';
+    if (i == 3) num[pos++] = '.';
     if (i == digitIndex) {
       num[pos++] = blinkOn ? ' ' : ('0' + digits[i]);
     } else {
