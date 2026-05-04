@@ -4,7 +4,7 @@
 
 // --- Константы диапазонов и единиц ---
 constexpr int   RANGES_COUNT = 6;
-constexpr float RANGES[RANGES_COUNT] = {1.0f, 40.0f, 250.0f, 400.0f, 600.0f, 1000.0f};
+extern const float RANGES[RANGES_COUNT];
 constexpr int   UNITS_COUNT  = 5;
 
 // Единицы измерения — массив в logic.cpp
