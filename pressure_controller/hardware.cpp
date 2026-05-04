@@ -83,10 +83,8 @@ void hardwareSetup() {
 // ============================================================================
 
 int readSensorRaw() {
-  // Однократное чтение
-  ADCSRA |= (1 << ADSC);  // Запустить конверсию
-  while (ADCSRA & (1 << ADSC));  // Ждать окончания
-  return ADC;
+  // Стандартное чтение A0
+  return analogRead(PIN_SENSOR);
 }
 
 int readSensorFiltered(uint8_t samples) {

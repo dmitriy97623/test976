@@ -85,6 +85,25 @@ void loop() {
   // 2. Чтение давления с фильтрацией и управление реле
   //    Это выполняется ВСЕГДА, независимо от состояния меню
   float pressure = readPressure();
+  
+  // Отладка: вывод сырых значений АЦП
+  static unsigned long lastDebug = 0;
+  if (millis() - lastDebug >= 500) {
+    int raw = readSensorFiltered(1);
+    Serial.print("Raw ADC: ");
+    Serial.print(raw);
+    Serial.print(" | Voltage: ");
+    Serial.print(raw * 5.0 / 1023.0, 2);
+    Serial.print("V | calMin: ");
+    Serial.print(calMin);
+    Serial.print(" | calMax: ");
+    Serial.print(calMax);
+    Serial.print(" | Pressure: ");
+    Serial.print(pressure);
+    Serial.println();
+    lastDebug = millis();
+  }
+  
   controlRelays(pressure);
 
   // 3. Обработка кнопок
