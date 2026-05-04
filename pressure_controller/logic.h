@@ -11,8 +11,8 @@ constexpr int   UNITS_COUNT  = 5;
 extern const char* const UNIT_NAMES[UNITS_COUNT];
 
 // --- Глобальные переменные (настройки) ---
-extern int   currentRangeIndex;
-extern int   currentUnitIndex;
+extern byte  currentRangeIndex;
+extern byte  currentUnitIndex;
 extern float setpointLow;
 extern float setpointHigh;
 extern float hysteresis;

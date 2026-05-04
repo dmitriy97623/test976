@@ -13,8 +13,8 @@ static bool valve1State = false;
 static bool valve2State = false;
 
 // Предыдущие значения для сравнения при сохранении
-static int prevRangeIndex = -1;
-static int prevUnitIndex = -1;
+static byte prevRangeIndex = 255;
+static byte prevUnitIndex = 255;
 static int prevSpLow_H = -1, prevSpLow_L = -1;
 static int prevSpHigh_H = -1, prevSpHigh_L = -1;
 static int prevHyst_H = -1, prevHyst_L = -1;
@@ -176,8 +176,8 @@ void saveSettings() {
   if (!shouldSaveSettings()) return;
 
   EEPROM.put(ADDR_MAGIC, MAGIC_NUM);
-  EEPROM.put(ADDR_RANGE, currentRangeIndex);
-  EEPROM.put(ADDR_UNIT, currentUnitIndex);
+  EEPROM.write(ADDR_RANGE, currentRangeIndex);
+  EEPROM.write(ADDR_UNIT, currentUnitIndex);
 
   int iLow  = (int)(setpointLow * 10);
   int iHigh = (int)(setpointHigh * 10);
@@ -199,8 +199,8 @@ void loadSettings() {
     return;
   }
 
-  EEPROM.get(ADDR_RANGE, currentRangeIndex);
-  EEPROM.get(ADDR_UNIT, currentUnitIndex);
+  currentRangeIndex = (byte)EEPROM.read(ADDR_RANGE);
+  currentUnitIndex = (byte)EEPROM.read(ADDR_UNIT);
 
   calMin = loadInt16(ADDR_CAL_MIN_H);
   calMax = loadInt16(ADDR_CAL_MAX_H);
@@ -237,8 +237,8 @@ void resetSettings() {
   calMax            = 983;
 
   // Сброс предыдущих значений
-  prevRangeIndex = -1;
-  prevUnitIndex = -1;
+  prevRangeIndex = 255;
+  prevUnitIndex = 255;
 
   saveSettings();
 }

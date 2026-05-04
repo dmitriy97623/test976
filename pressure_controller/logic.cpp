@@ -12,8 +12,8 @@ const float RANGES[RANGES_COUNT] = {1.0f, 40.0f, 250.0f, 400.0f, 600.0f, 1000.0f
 // Глобальные переменные
 // ============================================================================
 
-int   currentRangeIndex = 2;
-int   currentUnitIndex  = 1;
+byte  currentRangeIndex = 2;
+byte  currentUnitIndex  = 1;
 float setpointLow       = 20.0f;
 float setpointHigh      = 80.0f;
 float hysteresis        = 2.0f;
