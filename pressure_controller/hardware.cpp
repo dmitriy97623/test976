@@ -194,6 +194,13 @@ void saveSettings() {
 void loadSettings() {
   unsigned long magic;
   EEPROM.get(ADDR_MAGIC, magic);
+  // Проверка версии EEPROM
+  byte version = EEPROM.read(ADDR_VERSION);
+  if (version != EEPROM_VERSION) {
+    resetSettings();
+    return;
+  }
+
   if (magic != MAGIC_NUM) {
     resetSettings();
     return;
@@ -215,6 +222,10 @@ void loadSettings() {
   hysteresis = (float)iHyst / 10.0f;
 
   if (calMin >= calMax) { calMin = 197; calMax = 983; }
+
+  // Проверка и исправление границ диапазонов
+  if (currentRangeIndex >= RANGES_COUNT) currentRangeIndex = 2;
+  if (currentUnitIndex >= UNITS_COUNT) currentUnitIndex = 1;
 
   // Инициализируем предыдущие значения
   prevRangeIndex = currentRangeIndex;
@@ -240,5 +251,6 @@ void resetSettings() {
   prevRangeIndex = 255;
   prevUnitIndex = 255;
 
+  EEPROM.write(ADDR_VERSION, EEPROM_VERSION);
   saveSettings();
 }
