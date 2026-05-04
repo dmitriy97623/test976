@@ -27,7 +27,7 @@ constexpr int ADDR_CAL_MIN_L = 10;
 constexpr int ADDR_CAL_MAX_H = 11;
 constexpr int ADDR_CAL_MAX_L = 12;
 constexpr int ADDR_WDT_FLAG  = 13;
-constexpr int ADDR_VERSION   = 14;  // Версия структуры EEPROM  // Флаг сброса от Watchdog
+constexpr int ADDR_VERSION   = 14;  // Версия структуры EEPROM
 
 constexpr unsigned long MAGIC_NUM = 12345;
 constexpr byte EEPROM_VERSION = 2;  // Версия структуры EEPROM (после исправления byte)

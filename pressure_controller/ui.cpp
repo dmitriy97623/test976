@@ -499,9 +499,9 @@ static void displayWorkMain(float pressure) {
     snprintf(l1, sizeof(l1), "Check Sensor!  ");
   } else if (watchdogResetFlag) {
     snprintf(l0, sizeof(l0), "WDT RESET!      ");
-    snprintf(l1, sizeof(l1), "P:%-6.1f%s    ", pressure, UNIT_NAMES[currentUnitIndex]);
+    char bufP[10]; dtostrf(pressure, 5, 1, bufP); snprintf(l1, sizeof(l1), "P:%-6s%s    ", bufP, UNIT_NAMES[currentUnitIndex]);
   } else {
-    snprintf(l0, sizeof(l0), "P:%-6.1f%s    ", pressure, UNIT_NAMES[currentUnitIndex]);
+    char bufP2[10]; dtostrf(pressure, 5, 1, bufP2); snprintf(l0, sizeof(l0), "P:%-6s%s    ", bufP2, UNIT_NAMES[currentUnitIndex]);
     snprintf(l1, sizeof(l1), "L:%s H:%s    ",
              getValveState(1) ? "ON " : "OFF",
              getValveState(2) ? "ON " : "OFF");
@@ -514,8 +514,8 @@ static void displayWorkMain(float pressure) {
 static void displayWorkSetpoints() {
   char l0[17], l1[17];
 
-  snprintf(l0, sizeof(l0), "Lo:%-6.1f%s   ", setpointLow, UNIT_NAMES[currentUnitIndex]);
-  snprintf(l1, sizeof(l1), "Hi:%-6.1f%s   ", setpointHigh, UNIT_NAMES[currentUnitIndex]);
+  char bufLo[8]; dtostrf(setpointLow, 5, 1, bufLo); snprintf(l0, sizeof(l0), "Lo:%-6s%s   ", bufLo, UNIT_NAMES[currentUnitIndex]);
+  char bufHi[8]; dtostrf(setpointHigh, 5, 1, bufHi); snprintf(l1, sizeof(l1), "Hi:%-6s%s   ", bufHi, UNIT_NAMES[currentUnitIndex]);
 
   updateLine(0, l0);
   updateLine(1, l1);
@@ -533,16 +533,16 @@ static void displayBrowse() {
 
   switch (currentMenu) {
     case MENU_RANGE:
-      snprintf(l1, sizeof(l1), "  %.0f %s       ", RANGES[currentRangeIndex], UNIT_NAMES[currentUnitIndex]);
+      snprintf(l1, sizeof(l1), "  %d %s       ", (int)RANGES[currentRangeIndex], UNIT_NAMES[currentUnitIndex]);
       break;
     case MENU_SP_LOW:
-      snprintf(l1, sizeof(l1), "  %.1f %s      ", setpointLow, UNIT_NAMES[currentUnitIndex]);
+      char buf[6]; dtostrf(setpointLow, 4, 1, buf); snprintf(l1, sizeof(l1), "  %s %s      ", buf, UNIT_NAMES[currentUnitIndex]);
       break;
     case MENU_SP_HIGH:
-      snprintf(l1, sizeof(l1), "  %.1f %s      ", setpointHigh, UNIT_NAMES[currentUnitIndex]);
+      char buf2[6]; dtostrf(setpointHigh, 4, 1, buf2); snprintf(l1, sizeof(l1), "  %s %s      ", buf2, UNIT_NAMES[currentUnitIndex]);
       break;
     case MENU_HYST:
-      snprintf(l1, sizeof(l1), "  %.1f %s      ", hysteresis, UNIT_NAMES[currentUnitIndex]);
+      char buf3[6]; dtostrf(hysteresis, 4, 1, buf3); snprintf(l1, sizeof(l1), "  %s %s      ", buf3, UNIT_NAMES[currentUnitIndex]);
       break;
     case MENU_UNIT:
       snprintf(l1, sizeof(l1), "  %s          ", UNIT_NAMES[currentUnitIndex]);
@@ -567,7 +567,7 @@ static void displayEditList() {
 
   if (currentMenu == MENU_RANGE) {
     snprintf(l0, sizeof(l0), "Range:         ");
-    snprintf(l1, sizeof(l1), "  %.0f %s   << >>", RANGES[currentRangeIndex], UNIT_NAMES[currentUnitIndex]);
+    snprintf(l1, sizeof(l1), "  %d %s   << >>", (int)RANGES[currentRangeIndex], UNIT_NAMES[currentUnitIndex]);
   } else if (currentMenu == MENU_UNIT) {
     snprintf(l0, sizeof(l0), "Unit:          ");
     snprintf(l1, sizeof(l1), "  %s       << >>", UNIT_NAMES[currentUnitIndex]);
