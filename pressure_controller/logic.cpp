@@ -65,13 +65,24 @@ void controlRelays(float pressure) {
     return;
   }
 
-  // Реле 1: включается при низком давлении (ниже уставки минус гистерезис)
-  if (pressure < (setpointLow - hysteresis)) setValveState(1, true);
-  if (pressure > setpointLow)               setValveState(1, false);
+  // Логика управления реле:
+  // - Давление < (setpointLow - hysteresis): Реле 1 ОТКРЫТО (накачивать), Реле 2 ЗАКРЫТО
+  // - Давление в диапазоне [setpointLow - hysteresis, setpointHigh + hysteresis]: ОБА ЗАКРЫТЫ
+  // - Давление > (setpointHigh + hysteresis): Реле 1 ЗАКРЫТО, Реле 2 ОТКРЫТО (сбрасывать)
 
-  // Реле 2: включается при высоком давлении (выше уставки плюс гистерезис)
-  if (pressure > (setpointHigh + hysteresis)) setValveState(2, true);
-  if (pressure < setpointHigh)                setValveState(2, false);
+  if (pressure < (setpointLow - hysteresis)) {
+    // Слишком низкое давление — накачивать
+    setValveState(1, true);
+    setValveState(2, false);
+  } else if (pressure > (setpointHigh + hysteresis)) {
+    // Слишком высокое давление — сбрасывать
+    setValveState(1, false);
+    setValveState(2, true);
+  } else {
+    // Давление в норме — оба реле закрыты
+    setValveState(1, false);
+    setValveState(2, false);
+  }
 }
 
 void initRelayStates(float pressure) {
