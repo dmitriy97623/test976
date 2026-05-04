@@ -82,6 +82,6 @@ void initRelayStates(float pressure) {
   }
 
   // Однозначно определяем состояние при старте
-  setValveState(1, pressure < setpointLow);
-  setValveState(2, pressure > setpointHigh);
+  setValveState(1, false); // Выключить при старте
+  setValveState(2, false); // Выключить при старте
 }
