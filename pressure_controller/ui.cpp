@@ -57,6 +57,8 @@ static constexpr unsigned long WORK_SCREEN_HOLD = 3000;  // Показ уста�
 // --- Кэш дисплея ---
 static char cacheLine0[17] = "";
 static char cacheLine1[17] = "";
+static unsigned long lastDisplayUpdate = 0;
+static constexpr unsigned long DISPLAY_UPDATE_INTERVAL = 300;  // мс — мин. интервал обновления
 
 // --- Внутренний флаг калибровки ---
 static bool calibratingFlag = false;
@@ -631,6 +633,11 @@ static void displayConfirm() {
 // ============================================================================
 
 void updateDisplay(float pressure) {
+  // Ограничение частоты обновления дисплея (300 мс)
+  unsigned long now = millis();
+  if (now - lastDisplayUpdate < DISPLAY_UPDATE_INTERVAL) return;
+  lastDisplayUpdate = now;
+
   // Автоматическое скрытие сообщения после сброса
   if (msgShowTime > 0 && (millis() - msgShowTime >= MSG_DISPLAY_TIME)) {
     msgShowTime = 0;
