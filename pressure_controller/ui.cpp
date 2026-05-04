@@ -58,7 +58,7 @@ static constexpr unsigned long WORK_SCREEN_HOLD = 3000;  // Показ уста�
 static char cacheLine0[17] = "";
 static char cacheLine1[17] = "";
 static unsigned long lastDisplayUpdate = 0;
-static constexpr unsigned long DISPLAY_UPDATE_INTERVAL = 300;  // мс — мин. интервал обновления
+static constexpr unsigned long DISPLAY_UPDATE_INTERVAL = 400;  // мс — мин. интервал обновления
 
 // --- Внутренний флаг калибровки ---
 static bool calibratingFlag = false;
